@@ -1,0 +1,14 @@
+type Staker @entity {
+  id: ID!
+  latestClaimBlock: Int!
+  account: String!
+  totalRewards: BigInt!
+  totalUnclaimed: BigInt!
+}
+
+type Core @entity {
+  id: ID!
+  latestClaimBlock: Int!
+  coreId: Int!
+  totalRewards: BigInt!
+}

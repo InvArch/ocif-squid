@@ -1,0 +1,12 @@
+{
+  "outDir": "src/types",
+    "specVersions": "https://brainstorm.invarch.network/archive",
+  "events": [
+      "OcifStaking.StakerClaimed",
+      "OcifStaking.CoreClaimed"
+  ],
+  "calls": [ 
+  ],
+  "storage": [
+  ]
+}
