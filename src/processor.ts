@@ -50,25 +50,43 @@ processor.run(new TypeormDatabase(), async ctx => {
 
     let claims = await getClaims(ctx)
 
+    const output: ClaimEvent[] = claims.reduce((acc: ClaimEvent[], line: ClaimEvent) => {
+        const ndx = acc.findIndex(e => e.id === line.id);
+
+        if (ndx > -1) {
+            acc[ndx].total = (acc[ndx].total || BigInt(0)) + line.total;
+            acc[ndx].blockNumber = line.blockNumber;
+        } else {
+            acc.push(line);
+        }
+
+        return acc;
+    }, []);
+
     await SquidCache.load();
 
-    let cores: Core[] = [];
-    let stakers: Staker[] = [];
+    for (let c of output) {
+            let {typ, id, blockNumber, account, total, coreId} = c
 
-    for (let c of claims) {
-        let {typ, id, blockNumber, account, total, coreId} = c
+            if (typ == "staker") {
+                let stkr = SquidCache.get(Staker, id);
 
-        if (typ == "staker") {
-            SquidCache.upsert(new Staker({
-                    id, latestClaimBlock: blockNumber, account, totalRewards: total, totalUnclaimed: BigInt(0)
+                const totalRewards = stkr ? stkr.totalRewards + total : total;
+
+                SquidCache.upsert(new Staker({
+                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: BigInt(0)
                 }))
+            }
+            else {
+                let cor = SquidCache.get(Core, id);
+
+                const totalRewards = cor ? cor.totalRewards + total : total;
+
+                SquidCache.upsert(new Core({
+                    id, latestClaimBlock: blockNumber, coreId, totalRewards
+                }))
+            }
         }
-        else {
-            SquidCache.upsert(new Core({
-                id, latestClaimBlock: blockNumber, coreId, totalRewards: total
-            }))
-        }
-    }
 
     await SquidCache.flush();
     SquidCache.purge();
@@ -99,23 +117,12 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
                     throw new Error('Unsupported spec')
                 }
 
-                let a = claims.find(t => t.id === data.staker.toString())?.total;
-
-                if (!a) {
-                    let a = (await SquidCache.get(Staker, data.staker.toString()))?.totalRewards;
-                }
-
-                let amount = data.amount;
-                if (a) {
-                    amount += a;
-                }
-
                 claims.push({
                     typ: "staker",
                     id: data.staker.toString(),
                     blockNumber: block.header.height,
                     account: ss58.codec('kusama').encode(data.staker),
-                    total: amount,
+                    total: data.amount,
                     coreId: data.core
                 })
             } else if (item.name == "OcifStaking.CoreClaimed") {
@@ -128,23 +135,12 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
                     throw new Error('Unsupported spec')
                 }
 
-                let a = claims.find(t => t.account === data.destinationAccount.toString())?.total;
-
-                if (!a) {
-                    let a = (await SquidCache.get(Core, data.core.toString()))?.totalRewards;
-                }
-
-                let amount = data.amount;
-                if (a) {
-                    amount += a;
-                }
-
                 claims.push({
                     typ: "core",
-                    id: item.event.id,
+                    id: data.core.toString(),
                     blockNumber: block.header.height,
                     account: ss58.codec('kusama').encode(data.destinationAccount),
-                    total: amount,
+                    total: data.amount,
                     coreId: data.core
                 })
             }
