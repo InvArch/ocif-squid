@@ -11,11 +11,8 @@ import SquidCache from './squid-cache';
 
 const processor = new SubstrateBatchProcessor()
     .setDataSource({
-        // Lookup archive by the network name in the Subsquid registry
-        //archive: lookupArchive("kusama", {release: "FireSquid"})
-
-        // Use archive created by archive/docker-compose.yml
         archive: 'https://brainstorm.invarch.network/graphql',
+        // archive: 'http://localhost:8888/graphql'
     })
     .addEvent('OcifStaking.StakerClaimed', {
         data: {
@@ -69,6 +66,7 @@ processor.run(new TypeormDatabase(), async ctx => {
             let {typ, id, blockNumber, account, total, coreId} = c
 
             if (typ == "staker") {
+                await SquidCache.deferredLoad(Staker, id);
                 let stkr = SquidCache.get(Staker, id);
 
                 const totalRewards = stkr ? stkr.totalRewards + total : total;
@@ -78,6 +76,7 @@ processor.run(new TypeormDatabase(), async ctx => {
                 }))
             }
             else {
+                await SquidCache.deferredLoad(Core, id);
                 let cor = SquidCache.get(Core, id);
 
                 const totalRewards = cor ? cor.totalRewards + total : total;
