@@ -24,6 +24,29 @@ export class OcifStakingCoreClaimedEvent {
     }
 }
 
+export class OcifStakingNewEraEvent {
+    private readonly _chain: Chain
+    private readonly event: Event
+
+    constructor(ctx: EventContext)
+    constructor(ctx: ChainContext, event: Event)
+    constructor(ctx: EventContext, event?: Event) {
+        event = event || ctx.event
+        assert(event.name === 'OcifStaking.NewEra')
+        this._chain = ctx._chain
+        this.event = event
+    }
+
+    get isV14(): boolean {
+        return this._chain.getEventHash('OcifStaking.NewEra') === '39115a13c53f2b1968fdc266219c33cc8b971dddad3e2b3c0f3848136e2368b7'
+    }
+
+    get asV14(): {era: number} {
+        assert(this.isV14)
+        return this._chain.decodeEvent(this.event)
+    }
+}
+
 export class OcifStakingStakerClaimedEvent {
     private readonly _chain: Chain
     private readonly event: Event

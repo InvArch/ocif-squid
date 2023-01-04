@@ -4,15 +4,20 @@ import {BatchContext, BatchProcessorItem, SubstrateBatchProcessor} from "@subsqu
 import {Store, TypeormDatabase} from "@subsquid/typeorm-store"
 import {In} from "typeorm"
 import {Core, Staker} from "./model"
-import {OcifStakingStakerClaimedEvent, OcifStakingCoreClaimedEvent} from "./types/events"
+import {OcifStakingStakerClaimedEvent, OcifStakingCoreClaimedEvent, OcifStakingNewEraEvent} from "./types/events"
+import {EraInfo, StakerInfo, RewardInfo, EraStake} from "./types/v14"
+import {OcifStakingGeneralEraInfoStorage, OcifStakingCurrentEraStorage, OcifStakingGeneralStakerInfoStorage, OcifStakingRegisteredCoreStorage, OcifStakingLedgerStorage} from "./types/storage"
 import { EntityManager } from 'typeorm'
 import SquidCache from './squid-cache';
 
 
 const processor = new SubstrateBatchProcessor()
     .setDataSource({
-        archive: 'https://brainstorm.invarch.network/graphql',
-        // archive: 'http://localhost:8888/graphql'
+        // archive: 'https://brainstorm.invarch.network/graphql',
+        archive: 'http://localhost:8888/graphql',
+
+        // chain: 'wss://brainstorm.invarch.network'
+        chain: 'ws://localhost:9965'
     })
     .addEvent('OcifStaking.StakerClaimed', {
         data: {
@@ -36,7 +41,17 @@ const processor = new SubstrateBatchProcessor()
             }
         }
     } as const)
-
+    .addEvent('OcifStaking.NewEra', {
+        data: {
+            event: {
+                args: true,
+                extrinsic: {
+                    hash: true,
+                    fee: true
+                }
+            }
+        }
+    } as const)
 
 type Item = BatchProcessorItem<typeof processor>
 type Ctx = BatchContext<Store, Item>
@@ -45,7 +60,7 @@ type Ctx = BatchContext<Store, Item>
 processor.run(new TypeormDatabase(), async ctx => {
     SquidCache.init(ctx, [Core, Staker]);
 
-    let claims = await getClaims(ctx)
+    let claims = await getClaims(ctx);
 
     const output: ClaimEvent[] = claims.reduce((acc: ClaimEvent[], line: ClaimEvent) => {
         const ndx = acc.findIndex(e => e.id === line.id);
@@ -60,7 +75,32 @@ processor.run(new TypeormDatabase(), async ctx => {
         return acc;
     }, []);
 
+    let newEras = await getNewEras(ctx);
+
+    console.log("newEras: ", newEras.map(({unclaimedRewards}) => {return unclaimedRewards;}));
+
     await SquidCache.load();
+
+    for (const newEra of newEras) {
+        for (const {account, rewards} of newEra.unclaimedRewards) {
+            await SquidCache.deferredLoad(Staker, account);
+            let stkr = SquidCache.get(Staker, account);
+
+            if (stkr) {
+                console.log("staker found: ", stkr);
+
+                SquidCache.upsert(new Staker({
+                    id: stkr.id, latestClaimBlock: stkr.latestClaimBlock, account: stkr.account, totalRewards: stkr.totalRewards, totalUnclaimed: stkr.totalUnclaimed + rewards
+                }))
+
+            } else {
+                SquidCache.upsert(new Staker({
+                    id: account, latestClaimBlock: 0, account, totalRewards: BigInt(0), totalUnclaimed: rewards
+                }))
+            }
+
+        }
+    }
 
     for (let c of output) {
             let {typ, id, blockNumber, account, total, coreId} = c
@@ -72,7 +112,7 @@ processor.run(new TypeormDatabase(), async ctx => {
                 const totalRewards = stkr ? stkr.totalRewards + total : total;
 
                 SquidCache.upsert(new Staker({
-                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: BigInt(0)
+                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: stkr ? stkr.totalUnclaimed - total : BigInt(0)
                 }))
             }
             else {
@@ -146,4 +186,60 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
         }
     }
     return claims
+}
+
+interface NewEra {
+    era: number,
+    info: EraInfo,
+    unclaimedRewards: {account: string; rewards: bigint}[]
+}
+
+async function getNewEras(ctx: Ctx): Promise<NewEra[]> {
+    let newEras: NewEra[] = [];
+
+    for (let block of ctx.blocks) {
+        for (let item of block.items) {
+            if (item.name == "OcifStaking.NewEra") {
+                let e = new OcifStakingNewEraEvent(ctx, item.event)
+                let data: {era: number}
+
+                if (e.isV14) {
+                    data = e.asV14
+                } else {
+                    throw new Error('Unsupported spec')
+                }
+
+                if (data.era > 1) {
+
+                let generalEraInfoStorage = new OcifStakingGeneralEraInfoStorage(ctx, block.header)
+                let info = (await generalEraInfoStorage.asV14.get(data.era - 1))
+
+                if (info) {
+                    let thisEra: NewEra = {era: data.era - 1, info, unclaimedRewards: []};
+
+
+                let ledgerStorage = new OcifStakingLedgerStorage(ctx, block.header)
+                let ledgers = (await ledgerStorage.asV14.getPairs())
+
+                    if (ledgers) {
+                        for (const [accountId, ledger] of ledgers) {
+
+                            const rewards = thisEra.info.staked ? ((thisEra.info.rewards.stakers / thisEra.info.staked) * ledger.locked) : BigInt(0);
+
+                            thisEra.unclaimedRewards.push({
+                                account: accountId.toString(),
+                                rewards
+                            })
+                        }
+                    }
+
+                    newEras.push(thisEra);
+
+                }
+                }
+
+                }
+        }
+    }
+    return newEras
 }
