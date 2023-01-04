@@ -118,7 +118,7 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
 
                 claims.push({
                     typ: "staker",
-                    id: data.staker.toString(),
+                    id: ss58.codec('kusama').encode(data.staker),
                     blockNumber: block.header.height,
                     account: ss58.codec('kusama').encode(data.staker),
                     total: data.amount,
