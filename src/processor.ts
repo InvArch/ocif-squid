@@ -6,9 +6,11 @@ import {In} from "typeorm"
 import {Core, Staker} from "./model"
 import {OcifStakingStakerClaimedEvent, OcifStakingCoreClaimedEvent, OcifStakingNewEraEvent} from "./types/events"
 import {EraInfo, StakerInfo, RewardInfo, EraStake} from "./types/v14"
+import {Block} from "./types/support"
 import {OcifStakingGeneralEraInfoStorage, OcifStakingCurrentEraStorage, OcifStakingGeneralStakerInfoStorage, OcifStakingRegisteredCoreStorage, OcifStakingLedgerStorage} from "./types/storage"
 import { EntityManager } from 'typeorm'
 import SquidCache from './squid-cache';
+import {Big} from "big.js";
 
 
 const processor = new SubstrateBatchProcessor()
@@ -77,8 +79,6 @@ processor.run(new TypeormDatabase(), async ctx => {
 
     let newEras = await getNewEras(ctx);
 
-    console.log("newEras: ", newEras.map(({unclaimedRewards}) => {return unclaimedRewards;}));
-
     await SquidCache.load();
 
     for (const newEra of newEras) {
@@ -87,8 +87,6 @@ processor.run(new TypeormDatabase(), async ctx => {
             let stkr = SquidCache.get(Staker, account);
 
             if (stkr) {
-                console.log("staker found: ", stkr);
-
                 SquidCache.upsert(new Staker({
                     id: stkr.id, latestClaimBlock: stkr.latestClaimBlock, account: stkr.account, totalRewards: stkr.totalRewards, totalUnclaimed: stkr.totalUnclaimed + rewards
                 }))
@@ -145,6 +143,7 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
     let claims: ClaimEvent[] = []
 
     for (let block of ctx.blocks) {
+
         for (let item of block.items) {
             if (item.name == "OcifStaking.StakerClaimed") {
                 let e = new OcifStakingStakerClaimedEvent(ctx, item.event)
@@ -158,7 +157,7 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
 
                 claims.push({
                     typ: "staker",
-                    id: data.staker.toString(),
+                    id: ss58.codec('kusama').encode(data.staker),
                     blockNumber: block.header.height,
                     account: ss58.codec('kusama').encode(data.staker),
                     total: data.amount,
@@ -198,6 +197,7 @@ async function getNewEras(ctx: Ctx): Promise<NewEra[]> {
     let newEras: NewEra[] = [];
 
     for (let block of ctx.blocks) {
+
         for (let item of block.items) {
             if (item.name == "OcifStaking.NewEra") {
                 let e = new OcifStakingNewEraEvent(ctx, item.event)
@@ -217,19 +217,31 @@ async function getNewEras(ctx: Ctx): Promise<NewEra[]> {
                 if (info) {
                     let thisEra: NewEra = {era: data.era - 1, info, unclaimedRewards: []};
 
-
-                let ledgerStorage = new OcifStakingLedgerStorage(ctx, block.header)
+                    let ledgerStorage = new OcifStakingLedgerStorage(ctx, block.header)
                 let ledgers = (await ledgerStorage.asV14.getPairs())
 
                     if (ledgers) {
                         for (const [accountId, ledger] of ledgers) {
 
-                            const rewards = thisEra.info.staked ? ((thisEra.info.rewards.stakers / thisEra.info.staked) * ledger.locked) : BigInt(0);
+                            let unlockingChunksSum: Big = ledger.unbondingInfo.unlockingChunks.reduce((acc, chunk) => {
+
+                                if (chunk.unlockEra <= thisEra.era + 7) {
+                                    acc = acc.plus(Big(chunk.amount.toString()));
+                                }
+                                    return acc;
+                            }, Big(0));
+                            let ledgerLocked = Big(ledger.locked.toString()).minus(unlockingChunksSum);
+
+                            if (ledgerLocked > Big(0)) {
+
+                                const rewards = thisEra.info.staked ? Big(thisEra.info.rewards.stakers.toString()).div( Big(thisEra.info.staked.toString())).times(ledgerLocked) : Big(0);
 
                             thisEra.unclaimedRewards.push({
-                                account: accountId.toString(),
-                                rewards
+                                account: ss58.codec('kusama').encode(accountId),
+                                rewards: BigInt(rewards.toString())
                             })
+
+                            }
                         }
                     }
 
