@@ -15,11 +15,11 @@ import {Big} from "big.js";
 
 const processor = new SubstrateBatchProcessor()
     .setDataSource({
-        // archive: 'https://brainstorm.invarch.network/graphql',
-        archive: 'http://localhost:8888/graphql',
+         archive: 'https://brainstorm.invarch.network/graphql',
+        // archive: 'http://localhost:8888/graphql',
 
-        // chain: 'wss://brainstorm.invarch.network'
-        chain: 'ws://localhost:9965'
+         chain: 'wss://brainstorm.invarch.network'
+        // chain: 'ws://localhost:9965'
     })
     .addEvent('OcifStaking.StakerClaimed', {
         data: {
