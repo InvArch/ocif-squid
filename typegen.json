@@ -3,10 +3,16 @@
     "specVersions": "https://brainstorm.invarch.network/archive",
   "events": [
       "OcifStaking.StakerClaimed",
-      "OcifStaking.CoreClaimed"
+      "OcifStaking.CoreClaimed",
+      "OcifStaking.NewEra"
   ],
   "calls": [ 
   ],
   "storage": [
+      "OcifStaking.GeneralStakerInfo",
+      "OcifStaking.CurrentEra",
+      "OcifStaking.GeneralEraInfo",
+      "OcifStaking.RegisteredCore",
+      "OcifStaking.Ledger"
   ]
 }
