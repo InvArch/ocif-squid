@@ -109,8 +109,12 @@ processor.run(new TypeormDatabase(), async ctx => {
 
                 const totalRewards = stkr ? stkr.totalRewards + total : total;
 
+                if (account == "FSFDCf8KF5x2MvgV3sANfx1yGDvn5oLS5Lj5XH1KRN57g69") {
+                console.log("totalRewards: ", totalRewards)
+                }
+
                 SquidCache.upsert(new Staker({
-                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: stkr ? stkr.totalUnclaimed - total : BigInt(0)
+                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: stkr ? ((stkr.totalUnclaimed - total) < BigInt("10000000") ? BigInt(0) : stkr.totalUnclaimed - total ) : BigInt(0)
                 }))
             }
             else {
@@ -236,9 +240,19 @@ async function getNewEras(ctx: Ctx): Promise<NewEra[]> {
 
                                 const rewards = thisEra.info.staked ? Big(thisEra.info.rewards.stakers.toString()).div( Big(thisEra.info.staked.toString())).times(ledgerLocked) : Big(0);
 
+                                if (ss58.codec('kusama').encode(accountId) == "FSFDCf8KF5x2MvgV3sANfx1yGDvn5oLS5Lj5XH1KRN57g69") {
+                                    console.log("ledgerLocked: ", ledgerLocked.toString())
+                                    console.log("rewards: ", rewards.toString())
+                                    console.log("thisEra.era: ", thisEra.era)
+                                    console.log("thisEra.info: ", thisEra.info)
+
+                                    console.log("asasa: ", Big(thisEra.info.rewards.stakers.toString()).div( Big(thisEra.info.staked.toString())).times(ledgerLocked).round(0, Big.roundDown).toString())
+                                    console.log(Big(thisEra.info.rewards.stakers.toString()).div( Big(thisEra.info.staked.toString())).round(0, Big.roundDown).toString())
+                                }
+
                             thisEra.unclaimedRewards.push({
                                 account: ss58.codec('kusama').encode(accountId),
-                                rewards: BigInt(rewards.toString())
+                                rewards: BigInt(rewards.round(0, Big.roundDown).toString())
                             })
 
                             }
