@@ -6,7 +6,6 @@ import {In} from "typeorm"
 import {Core, Staker} from "./model"
 import {OcifStakingStakerClaimedEvent, OcifStakingCoreClaimedEvent} from "./types/events"
 import { EntityManager } from 'typeorm'
-import SquidCache from './squid-cache';
 
 
 const processor = new SubstrateBatchProcessor()
@@ -43,8 +42,6 @@ type Ctx = BatchContext<Store, Item>
 
 
 processor.run(new TypeormDatabase(), async ctx => {
-    SquidCache.init(ctx, [Core, Staker]);
-
     let claims = await getClaims(ctx)
 
     const output: ClaimEvent[] = claims.reduce((acc: ClaimEvent[], line: ClaimEvent) => {
@@ -60,35 +57,28 @@ processor.run(new TypeormDatabase(), async ctx => {
         return acc;
     }, []);
 
-    await SquidCache.load();
-
     for (let c of output) {
             let {typ, id, blockNumber, account, total, coreId} = c
 
             if (typ == "staker") {
-                await SquidCache.deferredLoad(Staker, id);
-                let stkr = SquidCache.get(Staker, id);
+                let stkr = await ctx.store.findOneBy(Staker, {account});
 
                 const totalRewards = stkr ? stkr.totalRewards + total : total;
 
-                SquidCache.upsert(new Staker({
+                await ctx.store.save(new Staker({
                     id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: BigInt(0)
-                }))
+                     }));
             }
             else {
-                await SquidCache.deferredLoad(Core, id);
-                let cor = SquidCache.get(Core, id);
+                let cor = await ctx.store.findOneBy(Core, {coreId});
 
                 const totalRewards = cor ? cor.totalRewards + total : total;
 
-                SquidCache.upsert(new Core({
+                await ctx.store.save(new Core({
                     id, latestClaimBlock: blockNumber, coreId, totalRewards
-                }))
+                }));
             }
         }
-
-    await SquidCache.flush();
-    SquidCache.purge();
 })
 
 

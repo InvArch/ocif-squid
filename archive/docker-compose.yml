@@ -10,14 +10,15 @@ services:
       POSTGRES_DB: squid-archive
 
   ingest:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - db
     restart: on-failure
     image: subsquid/substrate-ingest:firesquid
     command: [
-       "-e", "wss://kusama-rpc.polkadot.io",
-       "-c", "5", # allow up to 20 pending requests for the above endpoint (default is 5)
-       #  "--start-block", "1000000", # uncomment to specify a non-zero start block
+       "-e", "ws://host.docker.internal:9965",
+       "-c", "10",
        "--out", "postgres://postgres:postgres@db:5432/squid-archive"
     ]
 
