@@ -1,6 +1,6 @@
 {
   "outDir": "src/types",
-    "specVersions": "https://brainstorm.invarch.network/archive",
+    "specVersions": "https://invarch-tinkernet.explorer.subsquid.io/graphql",
   "events": [
       "OcifStaking.StakerClaimed",
       "OcifStaking.CoreClaimed"

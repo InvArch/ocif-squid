@@ -10,8 +10,7 @@ import { EntityManager } from 'typeorm'
 
 const processor = new SubstrateBatchProcessor()
     .setDataSource({
-        archive: 'https://brainstorm.invarch.network/graphql',
-        // archive: 'http://localhost:8888/graphql'
+        archive: lookupArchive("invarch-tinkernet", { release: "FireSquid" }),
     })
     .addEvent('OcifStaking.StakerClaimed', {
         data: {
@@ -100,8 +99,8 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
                 let e = new OcifStakingStakerClaimedEvent(ctx, item.event)
                 let data: {staker: Uint8Array, core: number, era: number, amount: bigint}
 
-                if (e.isV14) {
-                    data = e.asV14
+                if (e.isV15) {
+                    data = e.asV15
                 } else {
                     throw new Error('Unsupported spec')
                 }
@@ -118,8 +117,8 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
                 let e = new OcifStakingCoreClaimedEvent(ctx, item.event)
                 let data: {core: number, destinationAccount: Uint8Array, era: number, amount: bigint}
 
-                if (e.isV14) {
-                    data = e.asV14
+                if (e.isV15) {
+                    data = e.asV15
                     } else {
                     throw new Error('Unsupported spec')
                 }
