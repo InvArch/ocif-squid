@@ -1,12 +1,15 @@
 {
-  "outDir": "src/types",
-    "specVersions": "https://invarch-tinkernet.explorer.subsquid.io/graphql",
-  "events": [
-      "OcifStaking.StakerClaimed",
-      "OcifStaking.CoreClaimed"
-  ],
-  "calls": [ 
-  ],
-  "storage": [
-  ]
+    "outDir": "src/types",
+    "specVersions": "https://v2.archive.subsquid.io/metadata/invarch-tinkernet",
+    "pallets": {
+        "OcifStaking": {
+            "events": [
+                "StakerClaimed",
+                "CoreClaimed"
+            ],
+            "calls": [],
+            "storage": [],
+            "constants": []
+        }
+    }
 }

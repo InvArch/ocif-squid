@@ -1,43 +1,42 @@
 import {lookupArchive} from "@subsquid/archive-registry"
 import * as ss58 from "@subsquid/ss58"
-import {BatchContext, BatchProcessorItem, SubstrateBatchProcessor} from "@subsquid/substrate-processor"
+import {SubstrateBatchProcessor, Block, DataHandlerContext, SubstrateBatchProcessorFields} from "@subsquid/substrate-processor"
 import {Store, TypeormDatabase} from "@subsquid/typeorm-store"
 import {In} from "typeorm"
 import {Core, Staker} from "./model"
-import {OcifStakingStakerClaimedEvent, OcifStakingCoreClaimedEvent} from "./types/events"
+import {stakerClaimed as OcifStakingStakerClaimedEvent, coreClaimed as OcifStakingCoreClaimedEvent} from "./types/ocif-staking/events"
+import {events} from './types'
 import { EntityManager } from 'typeorm'
+import assert from "assert"
+import { hexToU8a } from '@polkadot/util';
 
 
 const processor = new SubstrateBatchProcessor()
     .setDataSource({
-        archive: lookupArchive("invarch-tinkernet", { release: "FireSquid" }),
+        archive: lookupArchive("invarch-tinkernet", { release: "ArrowSquid" }),
+        chain: {
+        	url: 'https://tinkernet-rpc.dwellir.com',
+        	rateLimit: 10
+        }
     })
-    .addEvent('OcifStaking.StakerClaimed', {
-        data: {
-            event: {
-                args: true,
-                extrinsic: {
-                    hash: true,
-                    fee: true
-                }
-            }
+    .addEvent({
+        name: [ 'OcifStaking.StakerClaimed' ],
+        call: true,
+        extrinsic: true
+    })
+    .addEvent({
+        name: [ 'OcifStaking.CoreClaimed' ],
+        call: true,
+        extrinsic: true
+    })
+    .setFields({
+        event: {
+            args: true
         }
-    } as const)
-    .addEvent('OcifStaking.CoreClaimed', {
-        data: {
-            event: {
-                args: true,
-                extrinsic: {
-                    hash: true,
-                    fee: true
-                }
-            }
-        }
-    } as const)
+    })
 
-
-type Item = BatchProcessorItem<typeof processor>
-type Ctx = BatchContext<Store, Item>
+type Item = SubstrateBatchProcessorFields<typeof processor>
+type Ctx = DataHandlerContext<Store, Item>
 
 
 processor.run(new TypeormDatabase(), async ctx => {
@@ -94,32 +93,32 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
     let claims: ClaimEvent[] = []
 
     for (let block of ctx.blocks) {
-        for (let item of block.items) {
+        for (let item of block.events) {
             if (item.name == "OcifStaking.StakerClaimed") {
-                let e = new OcifStakingStakerClaimedEvent(ctx, item.event)
-                let data: {staker: Uint8Array, core: number, era: number, amount: bigint}
 
-                if (e.isV15) {
-                    data = e.asV15
+                let data: {staker: string, core: number, era: number, amount: bigint}
+                if (events.ocifStaking.stakerClaimed.v15.is(item)) {
+                    let {staker, core, era, amount} = events.ocifStaking.stakerClaimed.v15.decode(item)
+                    data = {staker, core, era, amount}
                 } else {
                     throw new Error('Unsupported spec')
                 }
 
                 claims.push({
                     typ: "staker",
-                    id: ss58.codec('kusama').encode(data.staker),
+                    id: ss58.codec(117).encode(hexToU8a(data.staker)),
                     blockNumber: block.header.height,
-                    account: ss58.codec('kusama').encode(data.staker),
+                    account: ss58.codec(117).encode(hexToU8a(data.staker)),
                     total: data.amount,
                     coreId: data.core
                 })
             } else if (item.name == "OcifStaking.CoreClaimed") {
-                let e = new OcifStakingCoreClaimedEvent(ctx, item.event)
-                let data: {core: number, destinationAccount: Uint8Array, era: number, amount: bigint}
 
-                if (e.isV15) {
-                    data = e.asV15
-                    } else {
+                let data: {core: number, destinationAccount: string, era: number, amount: bigint}
+                if (events.ocifStaking.coreClaimed.v15.is(item)) {
+                    let {core, destinationAccount, era, amount} = events.ocifStaking.coreClaimed.v15.decode(item)
+                    data = {core, destinationAccount, era, amount}
+                } else {
                     throw new Error('Unsupported spec')
                 }
 
@@ -127,7 +126,7 @@ async function getClaims(ctx: Ctx): Promise<ClaimEvent[]> {
                     typ: "core",
                     id: data.core.toString(),
                     blockNumber: block.header.height,
-                    account: ss58.codec('kusama').encode(data.destinationAccount),
+                    account: ss58.codec(117).encode(hexToU8a(data.destinationAccount)),
                     total: data.amount,
                     coreId: data.core
                 })
