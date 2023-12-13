@@ -5,10 +5,12 @@ import {Store, TypeormDatabase} from "@subsquid/typeorm-store"
 import {In} from "typeorm"
 import {Core, Staker} from "./model"
 import {stakerClaimed as OcifStakingStakerClaimedEvent, coreClaimed as OcifStakingCoreClaimedEvent} from "./types/ocif-staking/events"
-import {events} from './types'
+import {events, storage} from './types'
 import { EntityManager } from 'typeorm'
 import assert from "assert"
 import { hexToU8a } from '@polkadot/util';
+import { Bytes } from '@subsquid/substrate-runtime'
+import { BigNumber } from "bignumber.js";
 
 
 const processor = new SubstrateBatchProcessor()
@@ -29,6 +31,11 @@ const processor = new SubstrateBatchProcessor()
         call: true,
         extrinsic: true
     })
+    .addEvent({
+        name: [ 'OcifStaking.NewEra' ],
+        call: true,
+        extrinsic: true
+    })
     .setFields({
         event: {
             args: true
@@ -40,6 +47,8 @@ type Ctx = DataHandlerContext<Store, Item>
 
 
 processor.run(new TypeormDatabase(), async ctx => {
+    await checkNewEra(ctx);
+
     let claims = await getClaims(ctx)
 
     const output: ClaimEvent[] = claims.reduce((acc: ClaimEvent[], line: ClaimEvent) => {
@@ -62,9 +71,12 @@ processor.run(new TypeormDatabase(), async ctx => {
                 let stkr = await ctx.store.findOneBy(Staker, {account});
 
                 const totalRewards = stkr ? stkr.totalRewards + total : total;
+                const totalUnclaimed = stkr ? stkr.totalUnclaimed - total : BigInt(0);
+
+                //console.log("totalUnclaimed: ", totalUnclaimed);
 
                 await ctx.store.save(new Staker({
-                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed: BigInt(0)
+                    id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed
                      }));
             }
             else {
@@ -79,6 +91,59 @@ processor.run(new TypeormDatabase(), async ctx => {
         }
 })
 
+async function checkNewEra(ctx: Ctx) {
+    for (let block of ctx.blocks) {
+        for (let item of block.events) {
+            if (item.name == "OcifStaking.NewEra") {
+
+                let data: {era: number}
+                if (events.ocifStaking.newEra.v15.is(item)) {
+                    let {era} = events.ocifStaking.newEra.v15.decode(item)
+                    data = {era}
+                } else {
+                    throw new Error('Unsupported spec')
+                }
+
+                const prevEra = await storage.ocifStaking.generalEraInfo.v15.get(block.header, data.era - 1);
+                const ledgers = await storage.ocifStaking.ledger.v15.getPairs(block.header);
+
+                if (prevEra && ledgers) {
+                    const totalStaked = prevEra.staked;
+                    const stakerRewards = prevEra.rewards.stakers;
+
+                    for (const [acc, ledger] of ledgers) {
+
+                        const account = ss58.codec(117).encode(hexToU8a(acc));
+
+                        let stkr = await ctx.store.findOneBy(Staker, {account});
+
+                        if (ledger && ledger.locked > BigInt(0)) {
+
+                            const thisStake = ledger.locked - ledger.unbondingInfo?.unlockingChunks?.reduce((partialSum, a) => partialSum + a.amount, BigInt(0))
+
+                            if (thisStake > 0) {
+
+                                const thisReward = new BigNumber(stakerRewards.toString()).div(new BigNumber(totalStaked.toString())).times(new BigNumber(thisStake.toString()));
+
+                                //console.log("stkr: ", stkr);
+                                //console.log("thisStake: ", thisStake);
+                                console.log("thisReward: ", thisReward);
+
+                                await ctx.store.save(new Staker({
+                                    id: account,
+                                    latestClaimBlock: stkr?.latestClaimBlock || 0,
+                                    account,
+                                    totalRewards: stkr?.totalRewards || BigInt(0),
+                                    totalUnclaimed: (stkr?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString())
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 interface ClaimEvent {
     typ: string

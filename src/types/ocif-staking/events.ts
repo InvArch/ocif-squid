@@ -1,6 +1,16 @@
 import {sts, Block, Bytes, Option, Result, EventType, RuntimeCtx} from '../support'
 import * as v15 from '../v15'
 
+export const newEra =  {
+    name: 'OcifStaking.NewEra',
+    v15: new EventType(
+        'OcifStaking.NewEra',
+        sts.struct({
+            era: sts.number(),
+        })
+    ),
+}
+
 export const stakerClaimed =  {
     name: 'OcifStaking.StakerClaimed',
     v15: new EventType(

@@ -5,10 +5,14 @@
         "OcifStaking": {
             "events": [
                 "StakerClaimed",
-                "CoreClaimed"
+                "CoreClaimed",
+                "NewEra"
             ],
             "calls": [],
-            "storage": [],
+            "storage": [
+                "Ledger",
+                "GeneralEraInfo"
+            ],
             "constants": []
         }
     }
