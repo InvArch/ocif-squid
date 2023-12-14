@@ -73,8 +73,6 @@ processor.run(new TypeormDatabase(), async ctx => {
                 const totalRewards = stkr ? stkr.totalRewards + total : total;
                 const totalUnclaimed = stkr ? stkr.totalUnclaimed - total : BigInt(0);
 
-                //console.log("totalUnclaimed: ", totalUnclaimed);
-
                 await ctx.store.save(new Staker({
                     id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed
                      }));
@@ -104,41 +102,44 @@ async function checkNewEra(ctx: Ctx) {
                     throw new Error('Unsupported spec')
                 }
 
-                const prevEra = await storage.ocifStaking.generalEraInfo.v15.get(block.header, data.era - 1);
-                const ledgers = await storage.ocifStaking.ledger.v15.getPairs(block.header);
+                const [prevEra, ledgers] = await Promise.all([
+                    storage.ocifStaking.generalEraInfo.v15.get(block.header, data.era - 1),
+                    storage.ocifStaking.ledger.v15.getPairs(block.header)
+                ]);
 
                 if (prevEra && ledgers) {
                     const totalStaked = prevEra.staked;
                     const stakerRewards = prevEra.rewards.stakers;
 
-                    for (const [acc, ledger] of ledgers) {
-
+                    const mappedLedgers = ledgers.map(([acc, ledger]) => new Promise((resolve) => {
                         const account = ss58.codec(117).encode(hexToU8a(acc));
 
-                        let stkr = await ctx.store.findOneBy(Staker, {account});
+                        ctx.store.findOneBy(Staker, {account}).then((stkr) => {
+                            if (ledger && ledger.locked > BigInt(0)) {
 
-                        if (ledger && ledger.locked > BigInt(0)) {
+                                const thisStake = ledger.locked - ledger.unbondingInfo?.unlockingChunks?.reduce((partialSum, a) => partialSum + a.amount, BigInt(0))
 
-                            const thisStake = ledger.locked - ledger.unbondingInfo?.unlockingChunks?.reduce((partialSum, a) => partialSum + a.amount, BigInt(0))
+                                if (thisStake > 0) {
 
-                            if (thisStake > 0) {
+                                    const thisReward = new BigNumber(stakerRewards.toString())
+                                        .div(new BigNumber(totalStaked.toString()))
+                                        .times(new BigNumber(thisStake.toString()));
 
-                                const thisReward = new BigNumber(stakerRewards.toString()).div(new BigNumber(totalStaked.toString())).times(new BigNumber(thisStake.toString()));
-
-                                //console.log("stkr: ", stkr);
-                                //console.log("thisStake: ", thisStake);
-                                console.log("thisReward: ", thisReward);
-
-                                await ctx.store.save(new Staker({
-                                    id: account,
-                                    latestClaimBlock: stkr?.latestClaimBlock || 0,
-                                    account,
-                                    totalRewards: stkr?.totalRewards || BigInt(0),
-                                    totalUnclaimed: (stkr?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString())
-                                }));
+                                    ctx.store.save(new Staker({
+                                        id: account,
+                                        latestClaimBlock: stkr?.latestClaimBlock || 0,
+                                        account,
+                                        totalRewards: stkr?.totalRewards || BigInt(0),
+                                        totalUnclaimed: (stkr?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString())
+                                    })).then(() => {});
+                                }
                             }
-                        }
-                    }
+
+                            resolve({});
+                        });
+                    }));
+
+                    await Promise.all(mappedLedgers);
                 }
             }
         }
