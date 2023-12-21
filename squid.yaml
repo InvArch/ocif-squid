@@ -1,6 +1,6 @@
 manifestVersion: subsquid.io/v0.1
 name: ocif-squid
-version: 2
+version: 4
 description: "The very first squid from manifest  "
 build:
 deploy:

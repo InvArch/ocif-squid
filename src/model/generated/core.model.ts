@@ -18,4 +18,7 @@ export class Core {
 
     @Column_("numeric", {transformer: marshal.bigintTransformer, nullable: false})
     totalRewards!: bigint
+
+    @Column_("numeric", {transformer: marshal.bigintTransformer, nullable: false})
+    totalUnclaimed!: bigint
 }

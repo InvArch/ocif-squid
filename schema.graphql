@@ -11,4 +11,5 @@ type Core @entity {
   latestClaimBlock: Int!
   coreId: Int!
   totalRewards: BigInt!
+  totalUnclaimed: BigInt!
 }
