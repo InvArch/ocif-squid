@@ -21,6 +21,7 @@ const processor = new SubstrateBatchProcessor()
       rateLimit: 10
     }
   })
+  .setBlockRange({ from: 1_402_932 })
   .addEvent({
     name: ['OcifStaking.StakerClaimed'],
     call: true,
@@ -105,11 +106,17 @@ async function checkNewEra(ctx: Ctx) {
           throw new Error('Unsupported spec');
         }
 
-        const [prevEraInfo, ledgerInfo, coreEraStakeInfo] = await Promise.all([
+        const [prevEraInfo, ledgerInfo, coreEraStakeInfoKeys] = await Promise.all([
           storage.ocifStaking.generalEraInfo.v15.get(block.header, data.era - 1),
           storage.ocifStaking.ledger.v15.getPairs(block.header),
-          storage.ocifStaking.coreEraStake.v15.getPairs(block.header)
+          storage.ocifStaking.coreEraStake.v15.getKeys(block.header)
         ]);
+
+        // Make an array of [core, era] where core doesn't repeat and era is always (data.era - 1)
+        // If a more efficient way to do this exists, please refactor.
+        const coresWithEra: [number, number][] = [...new Set(coreEraStakeInfoKeys.map(([core, _]) => core))].map((core) => [core, data.era - 1]);
+
+        const coreEraStakeInfo = await storage.ocifStaking.coreEraStake.v15.getMany(block.header, coresWithEra);
 
         // Check if the previous era and ledgers exist
         if (prevEraInfo && ledgerInfo) {
@@ -164,21 +171,20 @@ async function checkNewEra(ctx: Ctx) {
           const coreRewards = prevEraInfo.rewards.core;
           const totalActiveStake = prevEraInfo.activeStake;
 
-          const mappedCoreEraStakeInfo = coreEraStakeInfo.map(([[coreId, era], stakeInfo]) => {
-            if (era !== data.era - 1) {
-              return Promise.resolve(); // Skip this iteration if the era doesn't match
-            }
+          const mappedCoreEraStakeInfo = coresWithEra.map(([coreId, _], i) => {
+            const coreStakeInfo = coreEraStakeInfo[i];
 
             return new Promise((resolve) => {
               // Find the core by id
               ctx.store.findOneBy(Core, { coreId }).then((cor) => {
-                // Check if the stake is greater than 0
-                if (stakeInfo && stakeInfo.total > BigInt(0)) {
+
+                // Check if core is active and rewards weren't claimed
+                if (coreStakeInfo?.active && !coreStakeInfo.rewardClaimed) {
 
                   // Calculate the reward for this core's stake
                   const thisReward = new BigNumber(coreRewards.toString())
                     .div(new BigNumber(totalActiveStake.toString()))
-                    .times(new BigNumber(stakeInfo.total.toString()));
+                    .times(new BigNumber(coreStakeInfo.total.toString()));
 
                   // Add the reward to the total unclaimed rewards
                   const totalUnclaimed = (cor?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
