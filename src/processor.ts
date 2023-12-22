@@ -81,9 +81,10 @@ processor.run(new TypeormDatabase(), async ctx => {
       let cor = await ctx.store.findOneBy(Core, { coreId });
 
       const totalRewards = cor ? cor.totalRewards + total : total;
+      const totalUnclaimed = cor ? cor.totalUnclaimed - total : BigInt(0);
 
       await ctx.store.save(new Core({
-        id, latestClaimBlock: blockNumber, coreId, totalRewards
+        id, latestClaimBlock: blockNumber, coreId, totalRewards, totalUnclaimed
       }));
     }
   }
@@ -93,44 +94,59 @@ async function checkNewEra(ctx: Ctx) {
   for (let block of ctx.blocks) {
     for (let item of block.events) {
       if (item.name == "OcifStaking.NewEra") {
-
         let data: { era: number; };
+        // Check if the event is of version 15
         if (events.ocifStaking.newEra.v15.is(item)) {
+          // Decode era data from the event
           let { era } = events.ocifStaking.newEra.v15.decode(item);
           data = { era };
         } else {
+          // Throw an error if the event is not of version 15
           throw new Error('Unsupported spec');
         }
 
-        const [prevEra, ledgers] = await Promise.all([
+        const [prevEraInfo, ledgerInfo, coreEraStakeInfo] = await Promise.all([
           storage.ocifStaking.generalEraInfo.v15.get(block.header, data.era - 1),
-          storage.ocifStaking.ledger.v15.getPairs(block.header)
+          storage.ocifStaking.ledger.v15.getPairs(block.header),
+          storage.ocifStaking.coreEraStake.v15.getPairs(block.header)
         ]);
 
-        if (prevEra && ledgers) {
-          const totalStaked = prevEra.staked;
-          const stakerRewards = prevEra.rewards.stakers;
+        // Check if the previous era and ledgers exist
+        if (prevEraInfo && ledgerInfo) {
+          const totalStaked = prevEraInfo.staked;
+          const stakerRewards = prevEraInfo.rewards.stakers;
 
-          const mappedLedgers = ledgers.map(([acc, ledger]) => new Promise((resolve) => {
+          // Map the ledgers to promises
+          const mappedLedgers = ledgerInfo.map(([acc, ledger]) => new Promise((resolve) => {
             const account = ss58.codec(117).encode(hexToU8a(acc));
 
+            // Find the staker by account
             ctx.store.findOneBy(Staker, { account }).then((stkr) => {
+              // Check if the ledger is locked
               if (ledger && ledger.locked > BigInt(0)) {
 
+                // Calculate the stake for this era
                 const thisStake = ledger.locked - ledger.unbondingInfo?.unlockingChunks?.reduce((partialSum, a) => partialSum + a.amount, BigInt(0));
 
+                // Check if the stake is greater than 0
                 if (thisStake > 0) {
 
+                  // Calculate the reward for this stake
                   const thisReward = new BigNumber(stakerRewards.toString())
                     .div(new BigNumber(totalStaked.toString()))
                     .times(new BigNumber(thisStake.toString()));
 
+                  // Add the reward to the total unclaimed rewards
+                  const totalUnclaimed = (stkr?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
+
+
+                  // Save the updated staker to the store
                   ctx.store.save(new Staker({
                     id: account,
                     latestClaimBlock: stkr?.latestClaimBlock || 0,
                     account,
                     totalRewards: stkr?.totalRewards || BigInt(0),
-                    totalUnclaimed: (stkr?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString())
+                    totalUnclaimed
                   })).then(() => { });
                 }
               }
@@ -139,7 +155,51 @@ async function checkNewEra(ctx: Ctx) {
             });
           }));
 
+          // Wait for all promises to resolve
           await Promise.all(mappedLedgers);
+        }
+
+        // Check if the previous era and core era stake info exist
+        if (prevEraInfo && coreEraStakeInfo) {
+          const coreRewards = prevEraInfo.rewards.core;
+          const totalActiveStake = prevEraInfo.activeStake;
+
+          const mappedCoreEraStakeInfo = coreEraStakeInfo.map(([[coreId, era], stakeInfo]) => {
+            if (era !== data.era - 1) {
+              return Promise.resolve(); // Skip this iteration if the era doesn't match
+            }
+
+            return new Promise((resolve) => {
+              // Find the core by id
+              ctx.store.findOneBy(Core, { coreId }).then((cor) => {
+                // Check if the stake is greater than 0
+                if (stakeInfo && stakeInfo.total > BigInt(0)) {
+
+                  // Calculate the reward for this core's stake
+                  const thisReward = new BigNumber(coreRewards.toString())
+                    .div(new BigNumber(totalActiveStake.toString()))
+                    .times(new BigNumber(stakeInfo.total.toString()));
+
+                  // Add the reward to the total unclaimed rewards
+                  const totalUnclaimed = (cor?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
+
+                  // Save the updated core to the store
+                  ctx.store.save(new Core({
+                    id: coreId.toString(),
+                    latestClaimBlock: cor?.latestClaimBlock || 0,
+                    coreId,
+                    totalRewards: cor?.totalRewards || BigInt(0),
+                    totalUnclaimed
+                  })).then(() => { });
+                }
+
+                resolve({});
+              });
+            });
+          });
+
+          // Wait for all promises to resolve
+          await Promise.all(mappedCoreEraStakeInfo);
         }
       }
     }
