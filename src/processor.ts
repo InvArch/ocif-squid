@@ -71,21 +71,21 @@ processor.run(new TypeormDatabase(), async ctx => {
     if (typ == "staker") {
       let stkr = await ctx.store.findOneBy(Staker, { account });
 
-      const totalRewards = stkr ? stkr.totalRewards + total : total;
-      const totalUnclaimed = stkr ? stkr.totalUnclaimed - total : BigInt(0);
+      const totalRewards = stkr ? BigInt(stkr.totalRewards) + total : total;
+      const totalUnclaimed = stkr ? BigInt(stkr.totalUnclaimed) - total : BigInt(0);
 
       await ctx.store.save(new Staker({
-        id, latestClaimBlock: blockNumber, account, totalRewards, totalUnclaimed
+        id, latestClaimBlock: blockNumber, account, totalRewards: totalRewards.toString(), totalUnclaimed: totalUnclaimed.toString()
       }));
     }
     else {
       let cor = await ctx.store.findOneBy(Core, { coreId });
 
-      const totalRewards = cor ? cor.totalRewards + total : total;
-      const totalUnclaimed = cor ? cor.totalUnclaimed - total : BigInt(0);
+      const totalRewards = cor ? BigInt(cor.totalRewards) + total : total;
+      const totalUnclaimed = cor ? BigInt(cor.totalUnclaimed) - total : BigInt(0);
 
       await ctx.store.save(new Core({
-        id, latestClaimBlock: blockNumber, coreId, totalRewards, totalUnclaimed
+        id, latestClaimBlock: blockNumber, coreId, totalRewards: totalRewards.toString(), totalUnclaimed: totalUnclaimed.toString()
       }));
     }
   }
@@ -144,7 +144,7 @@ async function checkNewEra(ctx: Ctx) {
                     .times(new BigNumber(thisStake.toString()));
 
                   // Add the reward to the total unclaimed rewards
-                  const totalUnclaimed = (stkr?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
+                  const totalUnclaimed = BigInt(stkr?.totalUnclaimed || 0n) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
 
 
                   // Save the updated staker to the store
@@ -152,8 +152,8 @@ async function checkNewEra(ctx: Ctx) {
                     id: account,
                     latestClaimBlock: stkr?.latestClaimBlock || 0,
                     account,
-                    totalRewards: stkr?.totalRewards || BigInt(0),
-                    totalUnclaimed
+                    totalRewards: stkr?.totalRewards ? stkr?.totalRewards.toString() : "0",
+                    totalUnclaimed: totalUnclaimed.toString()
                   })).then(() => { });
                 }
               }
@@ -187,15 +187,15 @@ async function checkNewEra(ctx: Ctx) {
                     .times(new BigNumber(coreStakeInfo.total.toString()));
 
                   // Add the reward to the total unclaimed rewards
-                  const totalUnclaimed = (cor?.totalUnclaimed || BigInt(0)) + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
+                  const totalUnclaimed = BigInt(cor?.totalUnclaimed?.toString() || "0") + BigInt(thisReward.integerValue(BigNumber.ROUND_DOWN).toString());
 
                   // Save the updated core to the store
                   ctx.store.save(new Core({
                     id: coreId.toString(),
                     latestClaimBlock: cor?.latestClaimBlock || 0,
                     coreId,
-                    totalRewards: cor?.totalRewards || BigInt(0),
-                    totalUnclaimed
+                    totalRewards: cor?.totalRewards ? cor?.totalRewards.toString() : "0",
+                    totalUnclaimed: totalUnclaimed.toString()
                   })).then(() => { });
                 }
 
