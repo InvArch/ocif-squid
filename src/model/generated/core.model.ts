@@ -20,4 +20,10 @@ export class Core {
 
     @Column_("text", {nullable: false})
     totalUnclaimed!: string
+
+    @Column_("text", {nullable: true})
+    totalStaked!: string | undefined | null
+
+    @Column_("int4", {nullable: true})
+    numberOfStakers!: number | undefined | null
 }

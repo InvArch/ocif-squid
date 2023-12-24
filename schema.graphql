@@ -12,4 +12,6 @@ type Core @entity {
   coreId: Int!
   totalRewards: String!
   totalUnclaimed: String!
+  totalStaked: String
+  numberOfStakers: Int
 }

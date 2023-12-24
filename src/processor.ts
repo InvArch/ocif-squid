@@ -195,7 +195,9 @@ async function checkNewEra(ctx: Ctx) {
                     latestClaimBlock: cor?.latestClaimBlock || 0,
                     coreId,
                     totalRewards: cor?.totalRewards ? cor?.totalRewards.toString() : "0",
-                    totalUnclaimed: totalUnclaimed.toString()
+                    totalUnclaimed: totalUnclaimed.toString(),
+                    totalStaked: coreStakeInfo.total ? coreStakeInfo.total.toString() : "0",
+                    numberOfStakers: coreStakeInfo.numberOfStakers ? coreStakeInfo.numberOfStakers : 0
                   })).then(() => { });
                 }
 
