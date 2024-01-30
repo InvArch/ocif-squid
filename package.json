@@ -12,7 +12,7 @@
     "query-node:start": "squid-graphql-server --subscriptions --max-response-size 10000 --dumb-cache in-memory --dumb-cache-ttl 1000 --dumb-cache-size 100 --dumb-cache-max-age 1000"
   },
   "dependencies": {
-    "@polkadot/util": "^12.6.1",
+    "@polkadot/util": "^12.6.2",
     "@subsquid/archive-registry": "^3.3.0",
     "@subsquid/graphql-server": "3.2.4",
     "@subsquid/ss58": "0.1.2",
@@ -20,6 +20,7 @@
     "@subsquid/substrate-runtime": "^1.0.1",
     "@subsquid/typeorm-migration": "^1.2.2",
     "@subsquid/typeorm-store": "^1.2.4",
+    "bignumber.js": "^9.1.2",
     "dotenv": "^10.0.0",
     "pg": "8.8.0",
     "typeorm": "^0.3.17"

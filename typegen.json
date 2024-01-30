@@ -1,15 +1,21 @@
 {
-    "outDir": "src/types",
-    "specVersions": "https://v2.archive.subsquid.io/metadata/invarch-tinkernet",
-    "pallets": {
-        "OcifStaking": {
-            "events": [
-                "StakerClaimed",
-                "CoreClaimed"
-            ],
-            "calls": [],
-            "storage": [],
-            "constants": []
-        }
+  "outDir": "src/types",
+  "specVersions": "https://v2.archive.subsquid.io/metadata/invarch-tinkernet",
+  "pallets": {
+    "OcifStaking": {
+      "events": [
+        "StakerClaimed",
+        "CoreClaimed",
+        "NewEra"
+      ],
+      "calls": [],
+      "storage": [
+        "Ledger",
+        "GeneralEraInfo",
+        "RegisteredCore",
+        "CoreEraStake"
+      ],
+      "constants": []
     }
+  }
 }

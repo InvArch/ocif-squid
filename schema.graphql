@@ -2,13 +2,16 @@ type Staker @entity {
   id: ID!
   latestClaimBlock: Int!
   account: String!
-  totalRewards: BigInt!
-  totalUnclaimed: BigInt!
+  totalRewards: String!
+  totalUnclaimed: String!
 }
 
 type Core @entity {
   id: ID!
   latestClaimBlock: Int!
   coreId: Int!
-  totalRewards: BigInt!
+  totalRewards: String!
+  totalUnclaimed: String!
+  totalStaked: String
+  numberOfStakers: Int
 }
